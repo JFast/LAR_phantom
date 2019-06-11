@@ -197,8 +197,8 @@ int main(int argc, char *argv[])
 			
 			if (!GrowingBild1.empty()) 
 			{
-				cvui::printf(config, 50, 280, 0.5, 0xffffff, "Falls Stimmlippe gut erkannt, klicken Sie \"Weiter\"!");
-				if (cvui::button(config, 280, 450, "Weiter")) 
+				cvui::printf(config, 50, 280, 0.5, 0xffffff, "If segmentation correct, click \"Continue\"!");
+				if (cvui::button(config, 280, 450, "Continue")) 
 				{
 					state = 1;
 					
@@ -208,7 +208,7 @@ int main(int argc, char *argv[])
 				}
 			}
 			
-			cvui::printf(config, 50, 200, 0.5, 0xffffff, "Bitte klicken Sie eine Stimmlippe im Bild an!");
+			cvui::printf(config, 50, 200, 0.5, 0xffffff, "Please click on one vocal fold!");
 			break;
 		
 		// find other vocal fold and calculate angle
@@ -257,8 +257,8 @@ int main(int argc, char *argv[])
 			
 			if (!GrowingBild2.empty()) 
 			{
-				cvui::printf(config, 50, 280, 0.5, 0xffffff, "Falls fertig, klicken Sie \"Weiter\"!");
-				if (cvui::button(config, 280, 450, "Weiter"))
+				cvui::printf(config, 50, 280, 0.5, 0xffffff, "If finished, click \"Continue\"!");
+				if (cvui::button(config, 280, 450, "Continue"))
 				{
 					state = 2;
 					
@@ -286,7 +286,7 @@ int main(int argc, char *argv[])
 				}
 			}
 			
-			cvui::printf(config, 50, 200, 0.5, 0xffffff, "Bitte klicken Sie die andere Stimmlippe im Bild an!");
+			cvui::printf(config, 50, 200, 0.5, 0xffffff, "Please click on other vocal fold!");
 			break;
 			
 		case 2:
@@ -316,7 +316,7 @@ int main(int argc, char *argv[])
 					cvui::printf(config, 50, 340, 0.5, 0xff0000, "ERROR: check LAR2 > LAR1!");
 				
 				// repeat segmentation
-				if (cvui::button(config, 50, 450, "Segmentierung"))
+				if (cvui::button(config, 50, 450, "Segmentation"))
 				{
 					state = 0;
 					GrowingBild1.release();
@@ -331,13 +331,13 @@ int main(int argc, char *argv[])
 				cvui::trackbar(config, 50, 200, 250, &LAR1, 50, 200);
 				cvui::trackbar(config, 350, 200, 250, &LAR2, 50, 200);
 			
-				// Trackbar für Schließgrad
+				// closure angle trackbars
 				cvui::printf(config, 50, 90, 0.5, 0xff0000, "Closing angle left (in degrees)");
 				cvui::printf(config, 350, 90, 0.5, 0xff0000, "Closing angle rechts (in degrees)");
 				cvui::trackbar(config, 50, 120, 250, &closeAngleLeft, 0, 30);
 				cvui::trackbar(config, 350, 120, 250, &closeAngleRight, 0, 30);
 			
-				// Trackbar für Schlusszeit
+				// closure time span trackbar
 				cvui::printf(config, 50, 260, 0.5, 0xff0000, "Glottis closure (in ms)");
 				cvui::trackbar(config, 50, 290, 550, &closureDuration, 100, 2000);
 			
@@ -471,7 +471,7 @@ int main(int argc, char *argv[])
 				if(dropletDetected)
 				{
 											
-					// convert frames in 8 bit grayscale images
+					// convert frames into 8 bit grayscale images
 					
 					frame.convertTo(frame, CV_8UC1);
 					backgroundFrame.convertTo(backgroundFrame, CV_8UC1);
