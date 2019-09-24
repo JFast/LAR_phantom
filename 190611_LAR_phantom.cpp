@@ -1,4 +1,4 @@
-﻿#include "opencv2/opencv.hpp"
+#include "opencv2/opencv.hpp"
 #include "opencv2/imgproc.hpp"
 #include <opencv2/highgui.hpp>
 #include <opencv2/core/ocl.hpp>
@@ -25,58 +25,63 @@
 using namespace cv;
 using namespace std;
 
-// global variables
+// Globale Variablen
 bool RG = false;
 Point pt;
 
-// used functions
+
+//verwendete Funktionen
+void Census(Mat inputImg, Mat outputImg);
+void HammingDistance(Mat inputImg1, Mat inputImg2, Mat dist);
 void on_MouseHandle(int event, int x, int y, int flags, void *ustc);
 Mat RegionGrow(Mat src, Point2i pt/*, int th*/);
 
-// program start
+// Programmstart
 
 int main(int argc, char *argv[])
 {
-	// flags
+	// Flags
 	bool use_gaussian = true;
+	bool use_census = false;
+	bool use_morph = false;
 	bool use_rotate = true;
 	bool use_live = false;
 	bool motionDetected = false;
 	bool backgroundUpdate = true;
 	
-	// parameter setup for blob detection
+	// Parameter-Setup Blob Detector
 	cv::SimpleBlobDetector::Params params;
 	params.minDistBetweenBlobs = 100.0f;
 	params.filterByInertia = false;
 	params.filterByConvexity = false;
 	params.filterByColor = true;
-	params.blobColor = 255; // extract light blobs
+	params.blobColor = 255; // extract dark blobs (255 for light blobs)
 	params.filterByCircularity = false;
 	params.filterByArea = false;
 	params.minArea = 10.0f;
 	params.maxArea = 100.0f;
-	
-	// vector for blob storage
+		
+	// Vektor zur Speicherung detektierter Blobs
 	vector<cv::KeyPoint> keypoints;
 	
-	// floats for storage of blob coordinates, diameters and radii
+	// Floats zur Speicherung der Blob-Koordinaten, -Durchmesser und -Radien
 	float X, Y, D, R;
 
-	// parameters of Hough circle detection
+	// Parameter der Hough-Kreiserkennung
 	int nParam1 = 60, nParam2 = 30, nMinRadius = 5, nMaxRadius = 30, nFoundWhites = 0; 
 	vector<Vec3f> vCircles;
 	const int nMinWhitePixels = 10;
 	
-	// parameters of found lines defining vocal fold edges
+	// Parameter der HoughLines
 	float theta[3];
 	float a[3], b[3];
-	bool vertLabel[3];
+	bool vertLable[3];
 	
-	// parameters for processing time calculation
+	// Parameter für Zeitmessung
 	struct timeval t1, t2, t3;
 	long long elapsedTime = 0, t4 = 0;
 
-	// LAR parameters
+	// Parameter des LAR
 	int closeAngleLeft = 30;
 	int closeAngleRight = 30;
 	int closureDuration = 200;
@@ -84,76 +89,76 @@ int main(int argc, char *argv[])
 	int LAR2 = 100;
 	int motorLAR1, motorLAR2;
 
-	// servomotor rotation range
+	// Rotationsbereich der Servos
 	int motorPos1 = 1080, motorPos2 = 1250;
 
-	// servomotor end positions
+	// Endposition der Servos
 	int motorPosLAR1, motorPosLAR2;
 
-	// definition of servomotor control output pins
+	// Signalausgänge definieren
 	const int MotorPinLeft = 19;
 	const int MotorPinRight = 18;
 	
 											
-	// points for vocal fold midline
+	// Mittelinie der Stimmlippen zeichnen
 	cv::Point2f pt1, pt2;
 	
-	// declarations: current frame ("frame", enlarged frame ("frameZoom"), Frame with LAR phantom and droplet ("backgroundFrame"), last for comparison with current frame ("lastFrame"), resulting image ("result"), rotated resulting image ("resultRotate")
 	Mat frame, frameZoom, backgroundFrame, lastFrame, result, resultRotate;
 	
-	// declarations for region growing
+	// Mat-Struktur und Vector für Region Growing
 	Mat edge, GrowingBild1, GrowingBild2;
 	vector<Vec4i> linesP;
 	
-	// declarations for further image processing
+	// Deklaration: Mat-Strukturen für weitere Bildverarbeitung
 	Mat vForeground, pHoughSearch;
+	Mat dist(240, 320,CV_8UC1);
+	Mat frameCensus(240, 320,CV_8UC1);
+	Mat lastFrameCensus(240, 320,CV_8UC1);
 	
-	// GUI initialization
+	// Deklaration: Initialisierung der GUI
 	Mat config = Mat(500, 650, CV_8UC3);
 	
-	// further flags
+	// Flags
 	int state = 0;
 	bool start = 0;
 	bool dropletDetected = false;
-	
-	// initialize camera module
+		
+	// Kamera öffnen
 	VideoCapture cap(0);
-	
-	// check: camera initialized?
+	// Prüfung: Kamera geöffnet?
 	if (!cap.isOpened())
 	{
-		cerr << "ERROR: Cannot initialize camera." << endl;
+		cerr << "ERROR: Kamera kann nicht geöffnet werden." << endl;
 		return 0;
 	}
 	
-	// camera setup
+	// Kamera einstellen
 	cap.set(CV_CAP_PROP_FRAME_WIDTH, 320);
 	cap.set(CV_CAP_PROP_FRAME_HEIGHT, 240);
 	cap.set(CV_CAP_PROP_FPS, 120);
 	
-	// GUI initialization
+	// Initialisierung des GUI-Fensters
 	cv::namedWindow(WINDOW_NAME);
 	cvui::init(WINDOW_NAME);	
 	
-	// blob detector setup
 	cv::Ptr<cv::SimpleBlobDetector> detector = cv::SimpleBlobDetector::create(params);
 	
 	while (1)
 	{	
-		// button "Exit" pressed?
+		// Button "Beenden" gedrückt?
 		config = cv::Scalar(49, 52, 49);
-		if (cvui::button(config, 500, 450, "Exit")) {
+		if (cvui::button(config, 500, 450, "Beenden")) {
 			return 0;
 		}
 		
 		switch(state)
 		{
 			
-		// find first vocal fold and calculate angle
+		// Stimmlippe erkennen und Kantenlage berechnen
 		case 0:
 			cap >> frame;
 			
-			// find user-selected point
+			// Angeklickten Punkt erkennen
 			namedWindow("Live", WINDOW_NORMAL);
 			setMouseCallback("Live", on_MouseHandle);
 			imshow("Live", frame);
@@ -162,33 +167,33 @@ int main(int argc, char *argv[])
 			{
 				cv::cvtColor(frame, frame, COLOR_BGR2GRAY);
 				
-				// pre-processing
+				// Vorverarbeitung
 				GaussianBlur(frame, frame, Size(5, 5), 0, 0);
 				equalizeHist(frame,frame);
 				Canny(frame, frame, 50, 150, 3);
 				
-				// region growing
+				// Region Growing
 				GrowingBild1 = RegionGrow(frame, pt);
 				imshow("RG", GrowingBild1);
 				
-				// edge detection
+				// Kantenerkennung
 				Canny(GrowingBild1, edge, 50, 200, 3);
 				
-				// find Hough line
+				// Hough Line Detection
 				HoughLinesP(edge, linesP, 1, CV_PI/180, 30, 30, 10);
 				
 				Vec4f l=linesP[0];
 				
-				// calculate line parameters
+				// Parameter der Linie berechnen
 				if (l[2]==l[0]) 
 				{
-					vertLabel[0] = 1;
+					vertLable[0] = 1;
 					b[0] = l[2];
 					theta[0] = pi/2;
 				}
 				else
 				{	
-					vertLabel[0] = 0;
+					vertLable[0] = 0;
 					a[0] = (l[3]-l[1])/(l[2]-l[0]);
 					b[0] = l[3]-a[0]*l[2];
 					theta[0] = atan(a[0]);
@@ -197,8 +202,8 @@ int main(int argc, char *argv[])
 			
 			if (!GrowingBild1.empty()) 
 			{
-				cvui::printf(config, 50, 280, 0.5, 0xffffff, "If segmentation correct, click \"Continue\"!");
-				if (cvui::button(config, 280, 450, "Continue")) 
+				cvui::printf(config, 50, 280, 0.5, 0xffffff, "Falls Stimmlippe gut erkannt, klicken Sie \"Weiter\"!");
+				if (cvui::button(config, 280, 450, "Weiter")) 
 				{
 					state = 1;
 					
@@ -208,10 +213,10 @@ int main(int argc, char *argv[])
 				}
 			}
 			
-			cvui::printf(config, 50, 200, 0.5, 0xffffff, "Please click on one vocal fold!");
+			cvui::printf(config, 50, 200, 0.5, 0xffffff, "Bitte klicken Sie eine Stimmlippe im Bild an!");
 			break;
 		
-		// find other vocal fold and calculate angle
+		// Die andere Stimmlippe erkennen und Kantenlage berechnen
 		case 1:
 		
 			cap >> frame;
@@ -222,33 +227,33 @@ int main(int argc, char *argv[])
 			{
 				cv::cvtColor(frame, frame, COLOR_BGR2GRAY);
 				
-				// pre-processing
+				// Vorverarbeitung
 				GaussianBlur(frame, frame, Size(5, 5), 0, 0);
 				equalizeHist(frame,frame);
 				Canny(frame, frame, 50, 150, 3);
 				
-				// region growing
+				// Regiongrowing
 				GrowingBild2 = RegionGrow(frame, pt);
 				imshow("RG", GrowingBild2);
 				
-				// edge detection
+				// Kantenerkennung
 				Canny(GrowingBild2, edge, 50, 200, 3);
 				
-				// find Hough line
+				//Hough Line Detection
 				HoughLinesP(edge, linesP, 1, CV_PI/180, 30, 30, 10);
 				
 				Vec4f l=linesP[0];
 				
-				// calculate line parameters
+				// Parameter der Linie berechnen
 				if (l[2]==l[0]) 
 				{
-					vertLabel[1] = 1;
+					vertLable[1] = 1;
 					b[1] = l[2];
 					theta[1] = pi/2;
 				}
 				else
 				{
-					vertLabel[1] = 0;
+					vertLable[1] = 0;
 					a[1] = (l[3]-l[1])/(l[2]-l[0]);
 					b[1] = l[3]-a[1]*l[2];
 					theta[1] = atan(a[1]);
@@ -257,8 +262,8 @@ int main(int argc, char *argv[])
 			
 			if (!GrowingBild2.empty()) 
 			{
-				cvui::printf(config, 50, 280, 0.5, 0xffffff, "If finished, click \"Continue\"!");
-				if (cvui::button(config, 280, 450, "Continue"))
+				cvui::printf(config, 50, 280, 0.5, 0xffffff, "Falls fertig, klicken Sie \"Weiter\"!");
+				if (cvui::button(config, 280, 450, "Weiter"))
 				{
 					state = 2;
 					
@@ -268,7 +273,7 @@ int main(int argc, char *argv[])
 					
 					if (round(theta[2]/pi*180)==90)
 					{
-						vertLabel[2] = 1;
+						vertLable[2] = 1;
 						b[2] = (b[0]-b[1])/(a[1]-a[0]);
 						theta[3] = pi/2;
 					}
@@ -276,7 +281,7 @@ int main(int argc, char *argv[])
 					else
 					
 					{
-						vertLabel[2] = 0;
+						vertLable[2] = 0;
 						a[2] = tan(theta[2]);
 						b[2] = (a[2]-a[1])*(b[1]-b[0])/(a[1]-a[0])+b[1];
 					}
@@ -286,7 +291,7 @@ int main(int argc, char *argv[])
 				}
 			}
 			
-			cvui::printf(config, 50, 200, 0.5, 0xffffff, "Please click on other vocal fold!");
+			cvui::printf(config, 50, 200, 0.5, 0xffffff, "Bitte klicken Sie die andere Stimmlippe im Bild an!");
 			break;
 			
 		case 2:
@@ -294,7 +299,7 @@ int main(int argc, char *argv[])
 
 			switch(start)
 			{
-			// droplet detection not yet started, LAR parameters can be set
+			// Prozess noch nicht gestartet, Parameter sind einstellbar
 			case 0:
 				if (LAR2 >= LAR1)
 				{
@@ -302,56 +307,58 @@ int main(int argc, char *argv[])
 					{
 						start = 1;
 						if (gpioInitialise() < 0) return -1;
-						destroyWindow("Live view");
-						destroyWindow("Result");
-						destroyWindow("Difference image");
+						destroyWindow("Livebild");
+						destroyWindow("Ergebnis");
+						destroyWindow("Differenzbild");
 						destroyWindow("Frame");
 						destroyWindow("BackgroundFrame");
 					}
 					if (elapsedTime != 0)
-						cvui::printf(config, 50, 340, 0.5, 0xff0000, "Processing time: %11d us", elapsedTime);
+						cvui::printf(config, 50, 340, 0.5, 0xff0000, "Dauer der Erkennung: %11d us", elapsedTime);
 				}
 				
 				else
-					cvui::printf(config, 50, 340, 0.5, 0xff0000, "ERROR: check LAR2 > LAR1!");
+					cvui::printf(config, 50, 340, 0.5, 0xff0000, "Achtung: LAR2 > LAR1 muss gelten!");
 				
-				// repeat segmentation
-				if (cvui::button(config, 50, 450, "Segmentation"))
+				// Erneute Segmentierung
+				if (cvui::button(config, 50, 450, "Segmentierung"))
 				{
 					state = 0;
 					GrowingBild1.release();
 					GrowingBild2.release();
-					destroyWindow("Live view");
+					destroyWindow("Livebild");
 					continue;
 				}
 			
-				// latency trackbars
-				cvui::printf(config, 50, 170, 0.5, 0xff0000, "LAR1 latency (in ms)");
-				cvui::printf(config, 350, 170, 0.5, 0xff0000, "LAR2 latency (in ms)");
+				// Trackbar für Latenz
+				cvui::printf(config, 50, 170, 0.5, 0xff0000, "LAR1-Latenz (in ms)");
+				cvui::printf(config, 350, 170, 0.5, 0xff0000, "LAR2-Latenz (in ms)");
 				cvui::trackbar(config, 50, 200, 250, &LAR1, 50, 200);
 				cvui::trackbar(config, 350, 200, 250, &LAR2, 50, 200);
 			
-				// closure angle trackbars
-				cvui::printf(config, 50, 90, 0.5, 0xff0000, "Closing angle left (in degrees)");
-				cvui::printf(config, 350, 90, 0.5, 0xff0000, "Closing angle rechts (in degrees)");
+				// Trackbar für Schlusswinkel
+				cvui::printf(config, 50, 90, 0.5, 0xff0000, "Schlusswinkel links (in Grad)");
+				cvui::printf(config, 350, 90, 0.5, 0xff0000, "Schlusswinkel rechts (in Grad)");
 				cvui::trackbar(config, 50, 120, 250, &closeAngleLeft, 0, 30);
 				cvui::trackbar(config, 350, 120, 250, &closeAngleRight, 0, 30);
 			
-				// closure time span trackbar
-				cvui::printf(config, 50, 260, 0.5, 0xff0000, "Glottis closure (in ms)");
+				// Trackbar für Schlusszeit
+				cvui::printf(config, 50, 260, 0.5, 0xff0000, "Glottis-Schlusszeit (in ms)");
 				cvui::trackbar(config, 50, 290, 550, &closureDuration, 100, 2000);
 			
-				cvui::checkbox(config, 50, 30, "Use Gaussian blur", &use_gaussian);
-				cvui::checkbox(config, 350, 30, "Rotate image", &use_rotate);
-				cvui::checkbox(config, 50, 50, "Show live view", &use_live);
+				cvui::checkbox(config, 50, 10, "Census-Transform verwenden", &use_census);
+				cvui::checkbox(config, 50, 30, "Gaussschen Weichzeichner verwenden", &use_gaussian);
+				cvui::checkbox(config, 350, 10, "Morphologische Operatoren verwenden", &use_morph);
+				cvui::checkbox(config, 350, 30, "Bild um 180 Grad drehen", &use_rotate);
+				cvui::checkbox(config, 50, 50, "Livebild anzeigen", &use_live);
 			
 				break;
 			
-			// LAR parameters set, droplet detection process starting
+			// Prozess startet, Parameter sind festgelegt
 			case 1:
 				if (cvui::button(config, 280, 450, "Stop"))
 				{
-					// reset all parameters
+					// Alle Parameter zurücksetzen
 					start = 0;
 					lastFrame.release();
 					backgroundFrame.release();
@@ -363,42 +370,42 @@ int main(int argc, char *argv[])
 					destroyWindow("Live");
 				}
 				
-				cvui::printf(config, 50, 140, 0.5, 0x909090, "LAR1 latency: %d ms", LAR1);
-				cvui::printf(config, 350, 140, 0.5, 0x909090, "LAR2 latency: %d ms", LAR2);
-				cvui::printf(config, 50, 80, 0.5, 0x909090, "Closing angle left: %d degrees", closeAngleLeft);
-				cvui::printf(config, 350, 80, 0.5, 0x909090, "Closing angle right: %d degrees", closeAngleRight);
-				cvui::printf(config, 50, 280, 0.5, 0x909090, "Glottis closure: %d ms", closureDuration);
+				cvui::printf(config, 50, 140, 0.5, 0x909090, "LAR1-Latenz: %d ms", LAR1);
+				cvui::printf(config, 350, 140, 0.5, 0x909090, "LAR2-Latenz: %d ms", LAR2);
+				cvui::printf(config, 50, 80, 0.5, 0x909090, "Schlusswinkel links: %d Grad", closeAngleLeft);
+				cvui::printf(config, 350, 80, 0.5, 0x909090, "Schlusswinkel rechts: %d Grad", closeAngleRight);
+				cvui::printf(config, 50, 280, 0.5, 0x909090, "Glottis-Schlusszeit: %d ms", closureDuration);
 				
 				break;
 			}
 			
-			// record frame
+			// Frame aufnehmen		
 			cap >> frame;
 
-			// check: frame recorded?
+			// Prüfung: Bilder in Frame?
 			if (frame.empty())
 			{
-				cerr << "ERROR: No frame received!" << endl;
+				cerr << "FEHLER: Kein Kamera-Frame empfangen!" << endl;
 				break;
 			}
 			
 			if (start == 0) 
 			{
-				// enlarge live view
+				// Livebild vergrößen
 				resize(frame, frameZoom, Size(640,480), 0, 0, INTER_LINEAR);
 				
 				if (use_rotate) flip(frameZoom, frameZoom, -1);
 				
-				imshow("Live view",frameZoom);
+				imshow("Livebild",frameZoom);
 			}
 			
 			if (start == 1)
 			{
-				// initialization for lastFrame and backgroundFrame
+				// Initialisierung für lastFrame und backgroundFrame
 				if (lastFrame.empty()) cap >> lastFrame;
 				if (backgroundFrame.empty()) cap >> backgroundFrame;
 				
-				// grayscale conversion
+				// Graustufenkonvertierung
 				if (backgroundFrame.channels() != 1)
 				{
 				cv::cvtColor(backgroundFrame, backgroundFrame, COLOR_BGR2GRAY);
@@ -416,11 +423,11 @@ int main(int argc, char *argv[])
 					else imshow("Live", result);
 				}
 				
-				// convert current and last frame in grayscale images
+				// Aktuelles und letztes Frame in Graustufenbilder konvertieren
 				cv::cvtColor(frame, frame, COLOR_BGR2GRAY);
 				cv::cvtColor(lastFrame, lastFrame, COLOR_BGR2GRAY);
 			
-				// Gaussian blur
+				// Gaussscher Weichzeichner		
 				if (use_gaussian)
 				{
 					GaussianBlur(frame, frame, Size(3, 3), 0, 0);
@@ -432,26 +439,47 @@ int main(int argc, char *argv[])
 					}
 				}			
 								
-				// difference image analysis for motion detection
+				// Zwei angrenzende Frames werden subtrahiert, um Bewegung im Bild zu erkennen
 				absdiff(lastFrame, frame, vForeground);
 								
-				// difference image binarization
+				// Binarisierung des Differenzbildes
 				threshold(vForeground, vForeground, 15, 255, THRESH_BINARY);
+				//imwrite("Binaerbild.jpg", vForeground);
+						
+				// Morphologisches Closing zur Eliminierung vereinzelter Fehlpixel
+				if (use_morph)
+				{
+					morphologyEx(vForeground, vForeground, MORPH_OPEN,
+						getStructuringElement(MORPH_RECT, Size(3, 3), Point(-1, -1)), Point(-1, -1), 
+						1, BORDER_CONSTANT, 0);
+				}
 				
 				resize(vForeground, vForeground, Size(320, 240), 0, 0);
 			
-				// count white pixels in difference image
-				nFoundWhites = countNonZero(vForeground);
-				// cout << nFoundWhites << endl;
+				if (use_census)
+				{
+					// Census-Transformation und Hamming-Distance berechnen
+					
+					Census(frame, frameCensus);
+					if (lastFrameCensus.empty()) Census(lastFrame, lastFrameCensus);
+					
+					HammingDistance(frameCensus, lastFrameCensus, dist);
+				
+					// Ergebnis der Vordergrund-Erkennung durch Census-Transformation ausgeben
+					vForeground = dist.mul(vForeground);
+				}
 			
-				// if more than nMinWhitePixels found -> motion detected
+				// Zählen der weißen Pixel im Differenzbild
+				nFoundWhites = countNonZero(vForeground);
+			
+				// Falls mehr als nMinWhitePixels weiße Pixel im Bild --> Bewegung im Bild gefunden!
 				if ((nFoundWhites > nMinWhitePixels) && (!motionDetected))
 				{
 					motionDetected = true;
 					dropletDetected = false;
 				}
 				
-				// if less than nMinWhitePixels found and last state was "motion found" -> droplet impact detected
+				// Falls weniger als nMinWhitePixels weiße Pixel im Bild und vorheriger Zustand war "Bewegung gefunden" --> Tropfenaufprall!
 				if ((nFoundWhites < nMinWhitePixels) && (motionDetected))
 				{
 					dropletDetected = true;
@@ -459,7 +487,7 @@ int main(int argc, char *argv[])
 				}
 				
 				
-				// if no droplet impact and no motion detected: update background with current frame
+				// Falls kein Tropfenaufprall und keine Bewegung gefunden: aktuelles Frame als Hintergrund-Frame speichern
 				if ((!dropletDetected) && (!motionDetected))
 				{
 					cap >> backgroundFrame;
@@ -467,28 +495,30 @@ int main(int argc, char *argv[])
 				}
 				
 								
-				// if droplet impact detected: execute blob detection				
+				// Falls Tropfenaufprall gefunden: Blob Detection/Kreiserkennung durchführen				
 				if(dropletDetected)
 				{
 											
-					// convert frames into 8 bit grayscale images
+					// Frames für die Hough-Kreiserkennung in 8-Bit-Graustufenbild konvertieren
 					
 					frame.convertTo(frame, CV_8UC1);
 					backgroundFrame.convertTo(backgroundFrame, CV_8UC1);
 					
-					// enhance histogram
 					equalizeHist(frame,frame);
 					equalizeHist(backgroundFrame,backgroundFrame);
 					
-					// isolate droplet by background subtraction
-					absdiff(frame, backgroundFrame, pHoughSearch);	
+					// Subtraktion des Hintergrunds, um Tropfen zu isolieren
+					absdiff(frame, backgroundFrame, pHoughSearch);
+									
+					// Blob Detection zur Tropfen-Ortung im Aufprallframe
+					detector->detect(pHoughSearch, keypoints);			
 					
 					if(keypoints.size() >= 1) 
 					{
 						gettimeofday(&t3, NULL);
 						t4 = ((t3.tv_sec * 1000000) + t3.tv_usec) - ((t1.tv_sec * 1000000) + t1.tv_usec);
 						
-						// save x/y coordinates, diameter and radius of the first blob found 
+						// x/y-Koordinaten, Durchmesser und Radius des ersten gefundenen Blobs abspeichern 
 						X = keypoints[0].pt.x; 
 						Y = keypoints[0].pt.y;
 						D = keypoints[0].size;		
@@ -498,9 +528,9 @@ int main(int argc, char *argv[])
 					
 						if (use_live)
 						{
-							// draw centroid of found blob
+							// Kreismittelpunkt des gefundenen Kreises zeichnen
 							circle(result, Point(X, Y), 1, Scalar(0, 0, 255), 3, LINE_AA);
-							// draw circumference of found blob
+							// Umfang des gefundenen Kreises zeichnen
 							circle(result, Point(X, Y), R, Scalar(0, 0, 255), 3, LINE_AA);
 							if (use_rotate) 
 							{
@@ -511,8 +541,8 @@ int main(int argc, char *argv[])
 						}
 					
 					
-					// calculate servomotor actuation parameters
-					if (vertLabel[2]==1)
+					// Parameter für Servosteuerung berechnen
+					if (vertLable[2]==1)
 					{
 						if (X>b[2])
 						{
@@ -557,14 +587,14 @@ int main(int argc, char *argv[])
 					delay(500);
 								
 					
-					// show result of droplet detection
+					// Ergebnisbild zeigen	
 					
-					// draw centroid of found blob
+					// Kreismittelpunkt der gefundenen Kreise zeichnen
 					circle(result, Point(X, Y), 1, Scalar(0, 0, 255), 3, LINE_AA);
-					// draw circumference of found blob
+					// Umfang der gefundenen Kreise zeichnen
 					circle(result, Point(X, Y), R, Scalar(0, 0, 255), 3, LINE_AA);
 					
-					if (vertLabel[2]==1)
+					if (vertLable[2]==1)
 					{
 						pt1.x = cvRound(b[2]);
 						pt1.y = 0;
@@ -583,10 +613,10 @@ int main(int argc, char *argv[])
 					
 					if (use_rotate) flip(result, result, -1);
 					
-					imshow("Result", result);
-					imwrite("Result.png", result);
+					imshow("Ergebnis", result);
+					imwrite("Ergebnisbild.png", result);
 				
-					// LAR simulation finished, reset system
+					// LAR-Bewegung wurde simuliert, nun Reset
 					start = 0;
 					dropletDetected = false;
 					lastFrame.release();
@@ -601,8 +631,9 @@ int main(int argc, char *argv[])
 				}
 				
 
-				// current frame becomes last frame in next iteration
+				// Aktuelles Frame wird lastFrame
 				cap >> lastFrame;
+				if(use_census) lastFrameCensus = frameCensus;
 			}
 			break;
 		}
@@ -624,11 +655,66 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+// Berechnung der Census-Transformation
+void Census(Mat inputImg, Mat outputImg)
+{
+	Size imgSize = inputImg.size();
+	unsigned int census = 0;
+	unsigned int bit = 0;
+	int i,j,x,y;
+	int shiftCount = 0;
+	for (x = 1; x < imgSize.height - 1; x++)
+	{
+		for (y = 1; y < imgSize.width - 1; y++)
+		{
+			census = 0;
+			shiftCount = 0;
+			for (i = x - 1; i <= x + 1; i++)
+			{
+				for (j = y - 1; j <= y + 1; j++)
+				{
+					if (shiftCount != 4)
+					{
+						census = census << 1;
+						if (inputImg.at<uchar>(i,j) < inputImg.at<uchar>(x,y))
+						bit = 1;
+						else
+						bit = 0;
+						census = census + bit;
+					}
+					shiftCount ++;
+				}
+			}
+			outputImg.at<uchar>(x,y) = census;
+		}
+	}
+}
+
+// Berechnung der Hamming-Distanz
+void HammingDistance(Mat inputImg1, Mat inputImg2, Mat dist)
+{
+	
+	int temp, num;
+	for (int i = 0; i < inputImg1.rows; i++)
+	{
+		for (int j = 0; j < inputImg1.cols; j++)
+		{
+		num = 0;
+		temp = inputImg1.at<uchar>(i,j)^inputImg2.at<uchar>(i,j);
+		while(temp)
+			{
+				if (temp % 2) num++;
+				temp /= 2;
+			}
+		dist.at<uchar>(i,j) = (num>1);
+		}
+	}
+}
 
 Mat RegionGrow(Mat src, Point2i pt)
 {
 	Point2i ptGrowing;
-	int nGrowLabel[src.rows][src.cols] = {0};
+	int nGrowLable[src.rows][src.cols] = {0};
 	int nSrcValue = 0;
 	double nCurValue = 0;
 	Mat matDst = Mat::zeros(src.size(), CV_8UC1);
@@ -642,7 +728,7 @@ Mat RegionGrow(Mat src, Point2i pt)
   
 	while(!vcGrowPt.empty())
 	{
-		bool edgeLabel = false;
+		bool edgeLable = false;
 		pt = vcGrowPt.back();
 		vcGrowPt.pop_back();
 		for (int i = 0; i < 4; i++)
@@ -651,15 +737,15 @@ Mat RegionGrow(Mat src, Point2i pt)
 			ptGrowing.y = pt.y + DIR[i][1];
 			if ((ptGrowing.x < 0) || (ptGrowing.y < 0) || (ptGrowing.x > (src.cols - 1)) || (ptGrowing.y > (src.rows - 1)))
 				continue;
-			if (nGrowLabel[ptGrowing.y][ptGrowing.x] == 0)
+			if (nGrowLable[ptGrowing.y][ptGrowing.x] == 0)
 			{
 				nCurValue = src.at<uchar>(ptGrowing.y, ptGrowing.x);
 				if (nCurValue != nSrcValue)
-					edgeLabel = true;
+					edgeLable = true;
 			}
 		}
  
-		if(edgeLabel) continue;
+		if(edgeLable) continue;
 		for (int i = 0; i < 4; i++)
 		{
 			ptGrowing.x = pt.x + DIR[i][0];
@@ -668,14 +754,14 @@ Mat RegionGrow(Mat src, Point2i pt)
 			if ((ptGrowing.x < 0) || (ptGrowing.y < 0) || (ptGrowing.x > (src.cols - 1)) || (ptGrowing.y > (src.rows - 1)))
 				continue;
      
-			if (nGrowLabel[ptGrowing.y][ptGrowing.x] == 0)
+			if (nGrowLable[ptGrowing.y][ptGrowing.x] == 0)
 			{
 				nCurValue = src.at<uchar>(ptGrowing.y, ptGrowing.x);
 				if (nCurValue == nSrcValue)
 				{
 					matDst.at<uchar>(ptGrowing.y, ptGrowing.x) = 255;
 					vcGrowPt.push_back(ptGrowing);
-					nGrowLabel[ptGrowing.y][ptGrowing.x] = 1;
+					nGrowLable[ptGrowing.y][ptGrowing.x] = 1;
 				}
 			}
 		}
